@@ -4,6 +4,7 @@
 
 - модульная структура с предсказуемым порядком загрузки (`rc.d`)
 - единая модель кастомизации: правки делаются прямо в модулях `rc.d/*`
+- установка и бэкап существующей конфигурации через Make
 - минималистичный prompt (`.config/zsh/functions/prompt_launchpad_setup`) и вывод текущей директории только при смене (`.config/zsh/functions/prompt_launchpad_chpwd`)
 - готовый набор плагинов + автоинициализация Znap
 - автозагружаемые функции из `.config/zsh/functions/auto`
@@ -11,57 +12,88 @@
 
 ## Структура репозитория
 
-- `.zshrc` — bootstrap в `HOME`
+- `.zshenv` — bootstrap в `HOME`, задаёт `ZDOTDIR`
+- `.config/zsh/.zshrc` — точка входа интерактивной сессии
 - `.config/zsh/rc.d` — модульные настройки
 - `.config/zsh/functions` — функции и autoload-команды
 
 ## Быстрый старт
 
-1. Сделать форк репозитория в GitHub.
+1. Сделать форк репозитория в свой GitHub.
 2. Клонировать форк в любую удобную директорию:
 ```bash
 git clone <your-fork-url> <repo-dir>
 cd <repo-dir>
 ```
-3. (Опционально.) Бэкап текущей конфигурации. 
-4. Синхронизировать конфиг в домашнюю директорию:
+3. Запустить полный сценарий (бэкап и установка):
 ```bash
-rsync -a --delete ./.config/zsh/ ~/.config/zsh/
-cp ./.zshrc ~/.zshrc
+make all
 ```
+
+`make install` использует `rsync -a --delete`, поэтому `~/.config/zsh` становится точным зеркалом `./.config/zsh` из репозитория. Логика синхронизации сделана намеренно жёсткой (через удаление конфликтов), поэтому в цель `all` включены цели `backup` и `install`.
+
+## Команды Makefile
+
+- `make` или `make all` — полный сценарий: сначала `make backup`, затем `make install`.
+- `make install` — копирование с заменой из `./.config/zsh` репозитория → в `~/.config/zsh` и `./.zshenv` → в `~/.zshenv`.
+- `make backup` — timestamp-бэкап текущих `~/.config/zsh` и `~/.zshenv`.
+
+Поддерживаются переменные для переопределения путей:
+
+- `ENV` (по умолчанию `$(HOME)/.zshenv`)
+- `ZDOTDIR` (по умолчанию `$(HOME)/.config/zsh`)
+- `BACKUP_ROOT` (по умолчанию `$(HOME)/.zsh-backup`)
+
+Пример:
+
+```bash
+make install ENV=/tmp/demo-zshenv ZDOTDIR=/tmp/demo-zsh
+make backup BACKUP_ROOT=/tmp/demo-zsh-backup
+```
+
 ## Окружение
 
 В конфиге используются функции, рассчитанные на работу в системе автора. В частности, установлены:
 
-- [Throne](https://github.com/throneproj/Throne) — GUI-клиент для VLESS и других подобных протоколов с понятной и гибкой настройкой роутинга и локальным SOCKS/HTTP-прокси (функция `proxy` ориентируется на него)
-- [yazi](https://yazi-rs.github.io/) — файловый менеджер для терминала 
+- [Throne](https://github.com/throneproj/Throne) — GUI-клиент для VLESS и подобных протоколов с понятной и гибкой настройкой роутинга и локальным SOCKS/HTTP-прокси (функция `proxy` ориентируется на него)
+- [yazi](https://yazi-rs.github.io/) — файловый менеджер для терминала
+
+Эти программы можно установить по желанию, а можно не использовать эти функции в `functions/auto`.
 
 ## Обновление на новую версию конфига
 
-(Опционально.) Так как `rsync` будет удалять существующие файлы, целесообразно сделать бэкап, особенно если вносились локальные изменения, а затем вернуть необходимые изменения в новую версию конфига.
+Рекомендуемый сценарий:
 
 ```bash
 cd <repo-dir>
 git pull
-rsync -a --delete ./.config/zsh/ ~/.config/zsh/
-cp ./.zshrc ~/.zshrc
+make
 ```
 
 ## Как делать бэкап
 
-`rsync --delete` удаляет лишние файлы в целевой директории. Перед синхронизацией полезно сделать резервную копию. Будем делать это в датированную папку:
+Перед установкой/обновлением можно сделать резервную копию:
+
+```bash
+make backup
+```
+
+По умолчанию бэкап попадает в `~/.zsh-backup/<timestamp>`.
+
+Можно выполнить и вручную, без `make`:
 
 ```bash
 ts=$(date +%Y%m%d-%H%M%S)
 mkdir -p ~/.zsh-backup/$ts
 cp -R ~/.config/zsh ~/.zsh-backup/$ts/config-zsh 2>/dev/null || true
-cp ~/.zshrc ~/.zsh-backup/$ts/zshrc 2>/dev/null || true
+cp ~/.zshenv ~/.zsh-backup/$ts/zshenv 2>/dev/null || true
 ```
 
 ## Как это работает
 
-- `~/.zshrc` выставляет `ZDOTDIR=${XDG_CONFIG_HOME:-$HOME/.config}/zsh`
-- затем загружает `rc.d/<->-*.zsh` по числовому порядку
+- `~/.zshenv` выставляет `ZDOTDIR=${XDG_CONFIG_HOME:-$HOME/.config}/zsh`
+- затем Zsh загружает `$ZDOTDIR/.zshrc`
+- `$ZDOTDIR/.zshrc` загружает `rc.d/<NN>-*.zsh` по числовому порядку NN
 - модули используют `$ZDOTDIR` для доступа к `rc.d` и `functions`
 
 ## Порядок загрузки
@@ -78,8 +110,8 @@ cp ~/.zshrc ~/.zsh-backup/$ts/zshrc 2>/dev/null || true
 
 ## Рекомендации по кастомизация через форк
 
-- держать `main` синхронизированным с upstream
-- большие эксперименты делать в отдельных ветках — даст возможность быстро переключать ветки для нового/старого поведения и влить в main, если всё хорошо
+1. Держать `main` синхронизированным с `upstream`.
+2. Большие эксперименты делать в отдельных ветках — даст возможность быстро переключать ветки для нового/старого поведения и влить в `main`, если всё хорошо.
 
 ## Встроенные autoload-команды
 
@@ -96,7 +128,7 @@ proxy off
 При `on` выставляет `ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`.
 Если `url` не передан, используется `http://127.0.0.1:2080` (так в Throne по умолчанию).
 
-Нужно учитывать, что можно выставить и socks5h, если HTTP-прокси по каким-либо причинам не подходит, но тогда могут быть проблемы с установкой зависимостей через `pip/pipx`, который будет требовать отдельного пакета для работы с SOCKS5. А HTTP-прокси работает «из коробки», но не во всех случаях. Вопрос требует дополнительного исследования.
+Нужно учитывать, что можно выставить и `socks5h`, если HTTP-прокси по каким-либо причинам не подходит, но тогда могут быть проблемы с установкой зависимостей через `pip/pipx`, который будет требовать установленный модуль для работы с SOCKS5. А HTTP-прокси работает «из коробки», но не во всех случаях. Вопрос требует дополнительного исследования.
 
 ### `yy`
 
@@ -115,7 +147,7 @@ yy [args...]
 - конфиг: `${XDG_CONFIG_HOME:-~/.config}/zsh`
 - плагины и Znap: `${XDG_DATA_HOME:-~/.local/share}/zsh`
 - история:
-  - macOS + iCloud (если доступно): `~/Library/Mobile Documents/com~apple~CloudDocs/zsh_history`
+  - macOS + iCloud (если доступно) позволяет иметь синхронную историю между всеми Mac: `~/Library/Mobile Documents/com~apple~CloudDocs/zsh_history`
   - иначе: `${XDG_DATA_HOME:-~/.local/share}/zsh/history`
 
 ## Политика зависимостей
@@ -133,8 +165,14 @@ yy [args...]
 Конфиг синхронизирован не полностью. Выполните повторно:
 
 ```bash
+make install
+```
+
+Fallback без `make`:
+
+```bash
 rsync -a --delete ./.config/zsh/ ~/.config/zsh/
-cp ./.zshrc ~/.zshrc
+cp ./.zshenv ~/.zshenv
 ```
 
 ### `znap` не скачался
@@ -148,4 +186,4 @@ cp ./.zshrc ~/.zshrc
 
 ## Благодарности
 
-- `marlonrichert` за оригинальный Launchpad и вдохновение
+- `marlonrichert` за оригинальный [Launchpad](https://github.com/marlonrichert/zsh-launchpad) и вдохновение

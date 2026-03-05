@@ -1,11 +1,9 @@
 #!/bin/zsh
 
 #
-# Этот файл `~/.zshrc` загружается zsh для каждой интерактивной сессии shell.
+# Этот файл `$ZDOTDIR/.zshrc` (обычно `~/.config/zsh/.zshrc`) загружается zsh
+# для каждой интерактивной сессии shell.
 #
-
-# Приводим ZDOTDIR к единому пути, чтобы модули всегда искались в ~/.config/zsh.
-export ZDOTDIR="${XDG_CONFIG_HOME:-$HOME/.config}/zsh"
 
 # Явная ошибка для случая неполной установки/синхронизации.
 if [[ ! -d "$ZDOTDIR/rc.d" ]]; then
