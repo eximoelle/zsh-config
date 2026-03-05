@@ -1,0 +1,18 @@
+# zsh runtime artifacts
+.zcompdump*
+*.zwc
+
+# Shell history files that may appear during local testing
+.zsh_history
+.zsh_history.*
+
+# OS metadata
+.DS_Store
+._*
+
+# Editor/IDE temp files
+*~
+*.swp
+*.swo
+.idea/
+.vscode/

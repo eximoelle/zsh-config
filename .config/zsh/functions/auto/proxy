@@ -1,0 +1,27 @@
+#autoload
+
+# Включение/отключение переменных окружения для прокси.
+# Использование: proxy on | off или proxy on http://127.0.0.1:1080
+
+local cmd="$1"
+local proxy_url_default="http://127.0.0.1:2080"
+local url="${2:-$proxy_url_default}"
+
+case "$cmd" in
+  on)
+    export ALL_PROXY="$url"
+    export HTTPS_PROXY="$url"
+    export HTTP_PROXY="$url"
+    # В NO_PROXY можно прописать исключения проксирования
+    export NO_PROXY="localhost,127.0.0.1,.local"
+    echo "Proxy ON -> $url"
+    ;;
+  off)
+    unset ALL_PROXY HTTPS_PROXY HTTP_PROXY NO_PROXY
+    echo "Proxy OFF"
+    ;;
+  *)
+    echo "Usage: proxy on [url] | proxy off"
+    return 1
+    ;;
+esac
