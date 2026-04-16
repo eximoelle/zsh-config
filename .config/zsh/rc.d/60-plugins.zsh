@@ -12,10 +12,10 @@
 local -a plugins=(
     marlonrichert/zsh-autocomplete      # Синхронное автодополнение
     marlonrichert/zsh-edit              # Улучшенные хоткеи редактирования
-    marlonrichert/zsh-hist              # Работа с историей из командной строки
     marlonrichert/zcolors               # Цвета для completion и Git
     zsh-users/zsh-autosuggestions       # Inline-подсказки
     zsh-users/zsh-syntax-highlighting   # Подсветка синтаксиса
+    eximoelle/eximoelle-completions     # Мои автокомплиты
 )
 
 # Локальные плагины для разработки без публикации на GitHub.
@@ -89,4 +89,4 @@ done
 #   znap eval starship 'starship init zsh'
 # вместо:
 #   eval "$(starship init zsh)" (как требует инструкция по установке)
-znap eval zcolors zcolors   # Для zcolors нужна дополнительная инициализация.
+znap eval zcolors zcolors

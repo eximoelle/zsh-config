@@ -1,23 +1,25 @@
 #!/bin/zsh
 
 ##
-# Файл .zshenv — первый файл, который zsh загружает для КАЖДОЙ shell-сессии,
-# независимо от того, интерактивная она или нет.
-# Это включает и неинтерактивные дочерние shell-процессы.
-# Поэтому здесь лучше держать как можно меньше кода, чтобы не терять
-# производительность.
+# This file, .zshenv, is the first file sourced by zsh for EACH shell, whether
+# it's interactive or not.
+# This includes non-interactive sub-shells!
+# So, put as little in this file as possible, to avoid performance impact.
 #
 
-# Примечание: шебанг #!/bin/zsh строго обязателен только для исполняемых
-# скриптов, но без него редактор может некорректно подсвечивать синтаксис.
+# Note: The #!/bin/zsh shebang is strictly necessary for executable scripts
+# only, but without it, you might not always get correct syntax highlighting
+# when viewing the code.
 
-# По умолчанию Zsh ищет dotfiles в $HOME (и находит этот файл), но после
-# определения $ZDOTDIR начнет искать их в этой директории.
+# By default, Zsh will look for dotfiles in $HOME (and find this file), but
+# once $ZDOTDIR is defined, it will start looking in that dir instead.
 ZDOTDIR=${XDG_CONFIG_HOME:=~/.config}/zsh
-# ${X:=Y} задает значение по умолчанию Y для параметра X, если X не задан или
-# пустой. При этом X будет создан и получит это значение.
-# Чтобы вернуть значение по умолчанию без присваивания X, используйте ${X:-Y}.
-# Как и в других shell, ~ разворачивается в $HOME только в начале значения.
+# ${X:=Y} specifies a default value Y to use for parameter X, if X has not been
+# set or is null. This will actually create X, if necessary, and assign the
+# value to it.
+# To set a default value that is returned *without* setting X, use ${X:-Y}
+# instead.
+# As in other shells, ~ expands to $HOME _at the beginning of a value only._
 
-# Не даем /etc/zshrc_Apple_Terminal выполнять лишний код.
+# Prevent /etc/zshrc_Apple_Terminal from running some unnecessary code.
 export SHELL_SESSIONS_DISABLE=1

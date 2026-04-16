@@ -16,7 +16,7 @@
 #   /   перейти в корень
 setopt AUTO_CD
 
-# Автозагрузка командных функций из functions/auto через $fpath (см. rc.d/04-env.zsh).
+# Автозагрузка командных функций из `functions/auto` через `$fpath`.
 typeset -a auto_functions
 auto_functions=($ZDOTDIR/functions/auto/*(.N:t))
 auto_functions=(${auto_functions:#*.zwc})
@@ -47,6 +47,20 @@ alias zln='zmv -Lv'
 alias -s {css,gradle,html,js,json,md,patch,properties,txt,xml,yml}=$PAGER
 alias -s gz='gzip -l'
 alias -s {log,out}='tail -F'
+
+# Eza используем как основной листинг файлов, если бинарник установлен.
+# Базовые алиасы сохраняют привычные имена команд, но дают более удобный
+# вывод: директории идут первыми, иконки включаются автоматически, а для
+# длинного листинга добавляется Git-статус.
+if command -v eza >/dev/null 2>&1; then
+  alias ls='eza --group-directories-first --icons=auto'
+  alias l='eza --oneline --group-directories-first --icons=auto'
+  alias ll='eza --long --header --git --group-directories-first --icons=auto'
+  alias la='eza --long --header --all --git --group-directories-first --icons=auto'
+  alias lt='eza --tree --level=2 --group-directories-first --icons=auto'
+  alias lta='eza --tree --level=2 --all --group-directories-first --icons=auto'
+  alias tree='eza --tree --group-directories-first --icons=auto'
+fi
 
 
 # `< file` для быстрого просмотра содержимого текстового файла.

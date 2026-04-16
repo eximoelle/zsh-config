@@ -1,0 +1,228 @@
+#autoload
+
+# Универсальное history-меню на базе fzf:
+# - Enter: заменить текущий буфер выбранными командами
+# - Ctrl-P: вставить выбранные команды ниже текущего буфера
+# - Ctrl-D: удалить выбранные записи напрямую из zsh history
+
+_hist_fzf_write_history_file() {
+  emulate -L zsh -o no_aliases -o pipefail
+
+  local out=$1
+  shift
+
+  local cmd=''
+  : >| "$out" || return 1
+
+  for cmd in "$@"; do
+    [[ -n $cmd ]] || continue
+    print -rn -- "${cmd//$'\n'/$'\\\n'}" >>| "$out" || return 1
+    print -rn -- $'\n' >>| "$out" || return 1
+  done
+}
+
+_hist_fzf_delete_entries() {
+  emulate -L zsh -o extendedglob -o no_aliases -o pipefail
+
+  zmodload -F zsh/parameter p:history 2> /dev/null || {
+    print -u2 -- 'hist-fzf-widget: failed to load zsh history support'
+    return 1
+  }
+
+  [[ -n ${HISTFILE-} ]] || {
+    print -u2 -- 'hist-fzf-widget: $HISTFILE is not set'
+    return 1
+  }
+
+  (( SAVEHIST > 0 )) || {
+    print -u2 -- 'hist-fzf-widget: $SAVEHIST must be greater than 0'
+    return 1
+  }
+
+  [[ -o extendedhistory ]] && {
+    print -u2 -- 'hist-fzf-widget: direct delete does not support EXTENDED_HISTORY'
+    return 1
+  }
+
+  local histfile=$HISTFILE
+  local histsize=$HISTSIZE
+  local savehist=$SAVEHIST
+  local tmp_hist=''
+  local id=''
+  local -i history_id=0
+
+  local -A delete_ids=()
+  local -a keep_cmds=()
+
+  for id in "$@"; do
+    delete_ids[$id]=1
+  done
+
+  for (( history_id = 1; history_id <= HISTCMD; history_id++ )); do
+    [[ -v history[$history_id] ]] || continue
+    [[ -n ${history[$history_id]} ]] || continue
+    (( ${+delete_ids[$history_id]} )) && continue
+    keep_cmds+=("${history[$history_id]}")
+  done
+
+  tmp_hist=$(mktemp "${TMPDIR:-/tmp}/hist-fzf.XXXXXX") || {
+    print -u2 -- 'hist-fzf-widget: failed to create a temporary history file'
+    return 1
+  }
+
+  _hist_fzf_write_history_file "$tmp_hist" "${keep_cmds[@]}" || {
+    command rm -f "$tmp_hist"
+    print -u2 -- 'hist-fzf-widget: failed to serialize history'
+    return 1
+  }
+
+  command cp -f "$tmp_hist" "$histfile" || {
+    command rm -f "$tmp_hist"
+    print -u2 -- "hist-fzf-widget: failed to update $histfile"
+    return 1
+  }
+
+  command rm -f "$tmp_hist"
+
+  builtin fc -p "$histfile" "$histsize" "$savehist" || {
+    print -u2 -- 'hist-fzf-widget: failed to reload history'
+    return 1
+  }
+}
+
+emulate -L zsh -o extendedglob -o pipefail -o no_aliases
+zmodload -F zsh/parameter p:{commands,history} 2> /dev/null || {
+  print -u2 -- 'hist-fzf-widget: failed to load zsh history support'
+  return 1
+}
+
+command -v fzf > /dev/null || {
+  print -u2 -- 'hist-fzf-widget: fzf is not installed'
+  return 1
+}
+
+local initial_query="$*"
+local fzf_cmd='fzf'
+local preview_cmd='printf "%s\n" {} | cut -f2-'
+local info_cmd='rest=${FZF_INFO#* }; if [ "$rest" = "$FZF_INFO" ]; then printf "%s/%s" "$FZF_POS" "$FZF_MATCH_COUNT"; else printf "%s/%s %s" "$FZF_POS" "$FZF_MATCH_COUNT" "$rest"; fi'
+local header='Enter: load  Ctrl-P: paste below  Ctrl-D: delete  Space: mark  Esc: cancel  Ctrl-/: preview'
+local selected='' query='' key='' line='' id='' ret=0
+local cmd='' block=''
+local first_selected_offset=0
+local -a history_ids=()
+local -a ids=()
+local -a cmds=()
+local -a lines=()
+
+if (( ${+commands[bat]} )); then
+  preview_cmd+=' | bat --language=sh --style=plain --color=always'
+fi
+
+(( ${+functions[__fzfcmd]} )) &&
+    fzf_cmd="$(__fzfcmd)"
+
+while true; do
+  history_ids=()
+  for (( id = HISTCMD; id >= 1; id-- )); do
+    [[ -v history[$id] && -n ${history[$id]} ]] &&
+        history_ids+=($id)
+  done
+  (( ${#history_ids} > 0 )) || return 0
+
+  local -a opts=(
+    --print-query
+    --read0
+    --multi
+    --scheme=history
+    --info=inline
+    --info-command "$info_cmd"
+    -n2..,..
+    --with-nth=2..
+    '--bind=space:toggle,tab:down,btab:up,ctrl-r:toggle-sort,alt-r:toggle-raw,ctrl-/:toggle-preview'
+    '--bind=enter:print()+accept,ctrl-p:print(ctrl-p)+accept,ctrl-d:print(ctrl-d)+accept'
+    --wrap-sign=$'\t> '
+    --highlight-line
+    --header-first
+    --preview-window=down,40%,wrap,hidden
+    --preview "$preview_cmd"
+    --header "$header"
+    --prompt 'history> '
+  )
+
+  [[ -n $initial_query ]] &&
+      opts+=( --query "$initial_query" )
+
+  selected="$(
+    {
+      for id in $history_ids; do
+        printf '%s\t%s\0' "$id" "${history[$id]//$'\n'/$'\n\t'}"
+      done
+    } |
+    FZF_DEFAULT_OPTS_FILE='' \
+    ${=fzf_cmd} $opts
+  )"
+  ret=$?
+
+  (( ret == 0 )) || return 0
+  [[ -n $selected ]] || return 0
+
+  lines=("${(@f)selected}")
+  query=$lines[1]
+  key='enter'
+  first_selected_offset=1
+  case ${lines[2]-} in
+    ctrl-p|ctrl-d)
+      key=$lines[2]
+      first_selected_offset=2
+    ;;
+  esac
+  ids=()
+
+  for line in "${lines[@]:$first_selected_offset}"; do
+    if [[ $line == (#b)(<->)(#B)$'\t'* ]]; then
+      ids+=($match[1])
+    fi
+  done
+
+  (( ${#ids} > 0 )) || {
+    initial_query="$query"
+    continue
+  }
+
+  case $key in
+    ctrl-d)
+      zle -M ''
+      _hist_fzf_delete_entries "${ids[@]}" || {
+        zle -M 'history delete failed; check shell stderr for details'
+        initial_query="$query"
+        continue
+      }
+      initial_query="$query"
+      continue
+    ;;
+    enter|ctrl-p)
+      cmds=()
+      for id in $ids; do
+        cmd=${history[$id]%%$'\n'#}
+        [[ -n $cmd ]] &&
+            cmds+=("$cmd")
+      done
+
+      (( ${#cmds} > 0 )) || return 0
+      block="${(pj:\n:)cmds}"
+
+      if [[ $key == ctrl-p ]]; then
+        if [[ -n $BUFFER && $BUFFER != *$'\n' ]]; then
+          BUFFER+=$'\n'
+        fi
+        BUFFER+="$block"
+      else
+        BUFFER="$block"
+      fi
+
+      CURSOR=${#BUFFER}
+      zle reset-prompt
+      return 0
+    ;;
+  esac
+done
